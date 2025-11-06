@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="initial-scale=1,user-scalable=no,maximum-scale=1,width=device-width">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <!-- qgis2web & OpenLayers Styles/Libs -->
+    <link rel="stylesheet" href="./resources/ol.css">
+    <link rel="stylesheet" href="resources/fontawesome-all.min.css">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link rel="stylesheet" type="text/css" href="resources/horsey.min.css">
+    <link rel="stylesheet" type="text/css" href="resources/ol-search-layer.min.css">
+    <link href="resources/photon-geocoder-autocomplete.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="./resources/ol-layerswitcher.css">
+    <link rel="stylesheet" href="./resources/qgis2web.css">
+    <style>
+        html, body {
+            background-color: #ffffff;
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+        #map {
+            width: 1000px;
+            height: 600px;
+            margin: 0 auto;
+            border: 1px solid #ccc;
+            position: relative;
+        }
+        #measure-controls {
+            margin: 16px auto; 
+            width: 800px; 
+            text-align: center;
+        }
+        #measure-result {
+            display: inline-block;
+            min-width: 120px;
+            font-size: 1.1em;
+            margin: 8px auto;
+        }
+        #cor-search-bar { 
+            width: 50%; 
+            margin: 16px auto;
+        }
+        #cor-search-results {
+            width: 50%;
+            margin: 0 auto 16px auto;
+            text-align: left;
+        }
+        .list-group-item {
+            cursor: pointer;
+        }
+        /* Style for Locate Me button */
+        .locate {
+			top: 12em; /* Increased value to move button down */
+			left: 0.5em;
+			position: absolute;
+			z-index: 1000
+        }
+        .locate button {
+			background-color: white;
+			border: none;
+			padding: 6px 10px;
+			border-radius: 4px;
+			cursor: pointer;
+			font-size: 18px;
+        }
+        .locate button:hover {
+            background-color: #eee;
+        }
+    </style>
+    <title>Welcome to CORS Prototype</title>
+</head>
+<body>
+    <h1 style="margin-top: 24px;">Welcome to CORS Prototype</h1>
+
+    <ul id="cor-search-results" class="list-group"></ul>
+
+    <div id="measure-controls">
+        <button id="start-measure" class="btn btn-primary btn-sm">Start Measure</button>
+        <button id="stop-measure" class="btn btn-danger btn-sm">Stop Measure</button>
+        <button id="clear-measure" class="btn btn-secondary btn-sm">Clear Measure</button>
+        <span id="measure-result" class="badge badge-info"></span>
+    </div>
+
+    <div id="map">
+        <div id="popup" class="ol-popup">
+            <a href="#" id="popup-closer" class="ol-popup-closer"></a>
+            <div id="popup-content"></div>
+        </div>
+    </div>
+    
+    <!-- qgis2web & OL scripts -->
+    <script src="resources/qgis2web_expressions.js"></script>
+    <script src="./resources/functions.js"></script>
+    <script src="./resources/ol.js"></script>
+    <script src="resources/horsey.min.js"></script>
+    <script src="resources/ol-search-layer.js"></script>
+    <script src="./resources/ol-layerswitcher.js"></script>
+    <script src="resources/photon-geocoder-autocomplete.min.js"></script>
+    <!-- Replace these layer includes by your actual layers -->
+    <script src="layers/SGGPS206920KM_3.js"></script>
+    <script src="layers/SGGAA040019120KM_4.js"></script>
+    <script src="layers/SGGAEX19120KM_5.js"></script>
+    <script src="layers/CORStations_6.js"></script>
+    <script src="styles/SGGPS206920KM_3_style.js"></script>
+    <script src="styles/SGGAA040019120KM_4_style.js"></script>
+    <script src="styles/SGGAEX19120KM_5_style.js"></script>
+    <script src="styles/CORStations_6_style.js"></script>
+    <script src="./layers/layers.js" type="text/javascript"></script>
+    <script src="./resources/Autolinker.min.js"></script>
+    <script src="./resources/qgis2web.js"></script>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            var map = window.map;
+            var measureSource = new ol.source.Vector();
+            var measureLayer = new ol.layer.Vector({
+                source: measureSource
+            });
+            map.addLayer(measureLayer);
+            var drawMeasure = null;
+            var measureResult = document.getElementById("measure-result");
+
+            function formatLength(line) {
+                var length = ol.sphere.getLength(line); // meters
+                var km = length / 1000.0;
+                return km.toFixed(3) + " km";
+            }
+
+            function addMeasureInteraction() {
+                stopMeasureInteraction();
+                drawMeasure = new ol.interaction.Draw({
+                    source: measureSource,
+                    type: "LineString"
+                });
+                map.addInteraction(drawMeasure);
+
+                drawMeasure.on('drawstart', function(evt) {
+                    measureResult.textContent = "0.000 km";
+                    var sketch = evt.feature;
+                    sketch.getGeometry().on('change', function(e) {
+                        var geom = e.target;
+                        measureResult.textContent = formatLength(geom);
+                    });
+                });
+
+                drawMeasure.on('drawend', function(evt) {
+                    var geom = evt.feature.getGeometry();
+                    measureResult.textContent = formatLength(geom);
+                    stopMeasureInteraction();
+                });
+            }
+
+            function stopMeasureInteraction() {
+                if (drawMeasure) {
+                    map.removeInteraction(drawMeasure);
+                    drawMeasure = null;
+                }
+            }
+
+            function clearMeasure() {
+                stopMeasureInteraction();
+                measureSource.clear();
+                measureResult.textContent = "";
+            }
+
+            document.getElementById("start-measure").onclick = addMeasureInteraction;
+            document.getElementById("stop-measure").onclick = stopMeasureInteraction;
+            document.getElementById("clear-measure").onclick = clearMeasure;
+
+            // --- ENHANCED CORStations SEARCH ---
+            var corLayer = window.layer_CORStations_6 || null;
+            var corSource = corLayer ? corLayer.getSource() : null;
+            var corSearchInput = document.getElementById('cor-search-input');
+            var corSearchBtn = document.getElementById('cor-search-btn');
+            var corSearchResults = document.getElementById('cor-search-results');
+
+            var defaultStyle = corLayer && corLayer.getStyle();
+            var highlightStyle = new ol.style.Style({
+                image: new ol.style.Circle({
+                    radius: 10,
+                    fill: new ol.style.Fill({color: 'red'}),
+                    stroke: new ol.style.Stroke({color: '#fff', width: 3})
+                }),
+                zIndex: 9999
+            });
+
+            var lastHighlighted = [];
+
+            function clearHighlight() {
+                if (corLayer && corSource) {
+                    corSource.getFeatures().forEach(function(f) {
+                        f.setStyle(defaultStyle);
+                    });
+                }
+                lastHighlighted = [];
+            }
+
+            function corSearch(filterText) {
+                corSearchResults.innerHTML = "";
+                clearHighlight();
+
+                if (!corSource) return;
+                var features = corSource.getFeatures();
+                if (!filterText) return;
+                filterText = filterText.trim().toLowerCase();
+
+                var results = features.filter(function(f){
+                    var beacon = (f.get('Beacon') || "").toLowerCase();
+                    return beacon.indexOf(filterText) > -1;
+                });
+
+                results.forEach(function(f) {
+                    var li = document.createElement("li");
+                    li.className = "list-group-item";
+                    li.textContent = f.get('Beacon');
+                    li.onclick = function() {
+                        var extent = f.getGeometry().getExtent();
+                        map.getView().fit(extent, {maxZoom: 15, duration:800});
+                        clearHighlight();
+                        f.setStyle(highlightStyle);
+                        lastHighlighted = [f];
+                    };
+                    corSearchResults.appendChild(li);
+                    // Highlight first result automatically
+                    f.setStyle(highlightStyle);
+                    lastHighlighted.push(f);
+                });
+
+                if (results.length === 1) {
+                    var extent = results[0].getGeometry().getExtent();
+                    map.getView().fit(extent, {maxZoom: 15, duration:800});
+                }
+
+                if (results.length === 0 && filterText) {
+                    var li = document.createElement("li");
+                    li.className = "list-group-item text-muted";
+                    li.textContent = "No matching beacon found.";
+                    corSearchResults.appendChild(li);
+                }
+            }
+
+            if(corSearchBtn && corSearchInput) {
+                corSearchBtn.addEventListener('click', function() {
+                    corSearch(corSearchInput.value);
+                });
+            }
+
+            map.on('click', function(evt) {
+                if (lastHighlighted.length) {
+                    clearHighlight();
+                }
+            });
+
+            // --- MY LOCATION BUTTON & GEOLOCATION ---
+            var geolocation = new ol.Geolocation({
+                trackingOptions: {
+                    enableHighAccuracy: true
+                },
+                projection: map.getView().getProjection()
+            });
+
+            var locateButton = document.createElement('div');
+            locateButton.className = 'ol-control ol-unselectable locate';
+            locateButton.innerHTML = '<button title="Locate me">◎</button>';
+
+			locateButton.addEventListener('click', function () {
+				geolocation.setTracking(true); // always re-enable tracking
+				setTimeout(function() {
+					var position = geolocation.getPosition();
+					if (position) {
+						map.getView().animate({
+							center: position,
+							zoom: 15,
+							duration: 500
+						});
+					} else {
+						// Error feedback
+						alert(
+							'Location not available. Steps:\n' +
+							'1. Check browser permissions (Site settings: Location ALLOWED)\n' +
+							'2. Try in Chrome, Safari, Edge\n' +
+							'3. Make sure location works in other apps\n' +
+							'4. Disable VPN/Incognito\n' +
+							'5. Confirm all site scripts/resources load correctly\n'
+						);
+					}
+				}, 1200); // Give tracking a second to update
+			});
+
+            var locateControl = new ol.control.Control({
+                element: locateButton
+            });
+            map.addControl(locateControl);
+
+            // Optionally track position changes if you want:
+            // geolocation.setTracking(true);
+
+            // Add accuracy and position features (optional)
+            var accuracyFeature = new ol.Feature();
+            var positionFeature = new ol.Feature();
+            positionFeature.setStyle(new ol.style.Style({
+                image: new ol.style.Circle({
+                    radius: 6,
+                    fill: new ol.style.Fill({color: '#3399CC'}),
+                    stroke: new ol.style.Stroke({
+                        color: '#fff', width: 2
+                    })
+                })
+            }));
+
+            var accuracyLayer = new ol.layer.Vector({
+                source: new ol.source.Vector({
+                    features: [accuracyFeature, positionFeature]
+                })
+            });
+            map.addLayer(accuracyLayer);
+
+            geolocation.on('change:position', function () {
+                var coordinates = geolocation.getPosition();
+                positionFeature.setGeometry(coordinates ? new ol.geom.Point(coordinates) : null);
+            });
+
+            geolocation.on('change:accuracyGeometry', function () {
+                accuracyFeature.setGeometry(geolocation.getAccuracyGeometry());
+            });
+
+        });
+    </script>
+</body>
+</html>
